@@ -1,96 +1,245 @@
-import math
-import numpy as np
+#
+#  square_test.py
+#  ImageExtracter
+#
+#  Created by Florent THOMAS-MOREL on 10/26/16.
+#  MIT Liscence
+
+import os
 import cv2
+import math
+import sys
+import numpy as np
 from matplotlib import pyplot as plt
 
 
-def rotateImage(image, threshold):
-    angles = [x * 0.1 for x in range(-20, 20)]
-    for angle in angles:
-        img = image.copy()
-        rows,cols = img.shape
-        M = cv2.getRotationMatrix2D((cols/2,rows/2),angle,1)
-        img = cv2.warpAffine(img,M,(cols,rows))
+########################################################
+#                                                      #
+#                      CONSTANT                        #
+#                                                      #
+########################################################
 
-        tmpl_img = cv2.imread('cross.png',0)
+OUTPUT_DIR = './output/'
+BANK_IMG_FOLDER = './bank/'
+TEMPLATES_IMG_FOLDER = './picto/'
+
+WIDTH_BASE_SIZE = 2480
+PICTOS_PER_LINES = 5
+NB_PICTOS = 7 * PICTOS_PER_LINES
+
+
+########################################################
+#                                                      #
+#                IMAGE PRE TREATMENT                   #
+#                                                      #
+########################################################
+
+def emptyImage(img_rgb):
+    _, empty_image = cv2.threshold(img_rgb, 120, 255, cv2.THRESH_BINARY)
+    return empty_image
+
+
+def detectShapes(empty_img, img, ratio, threshold):
+    template = cv2.imread('square.png',0)
+    w, h = template.shape[::-1]
+    template = cv2.resize(template, (int(round(ratio * w)), int(round(ratio * h))))
+
+    points = []
+    shapes = []
+
+    res = cv2.matchTemplate(empty_img,template,cv2.TM_CCOEFF_NORMED)
+    loc = np.where( res >= threshold)
+
+    for pt in zip(*loc[::-1]):
+        x1 = pt[0]
+        y1 = pt[1]
+        special_squares = filter(lambda (x, y): (float(x1) / float(x)) > 0.9 and (float(y1) / float(y)) > 0.9 and (float(y1) / float(y)) < 1.1 and (float(x1) / float(x)) < 1.1, points)
+        if len(special_squares) == 0:
+            picto = img[y1:y1+h, x1:x1+w]
+            points.append((x1, y1))
+            shapes.append((picto, (x1, y1)))
+
+    return shapes
+
+
+########################################################
+#                                                      #
+#                   PICTO TREATMENT                    #
+#                                                      #
+########################################################
+
+def getTemplates(path):
+    templates = {}
+    for dirname, _, filenames in os.walk(path):
+        for filename in filenames:
+            imgPath = os.path.join(dirname, filename)
+            pictoName = filename[:-4]
+            templates[pictoName] = cv2.imread(imgPath, 0)
+
+    return templates
+
+
+def recognizePictogram(pictoZone, ratio):
+    templates = getTemplates(TEMPLATES_IMG_FOLDER)
+    pattern = "-"
+    for template, tmpl_img in templates.items():
         w, h = tmpl_img.shape[::-1]
-
-        res = cv2.matchTemplate(img,tmpl_img,cv2.TM_CCOEFF_NORMED)
-        loc = np.where( res >= threshold)
+        tmpl_img = cv2.resize(tmpl_img, (int(round(ratio * w)), int(round(ratio * h))))
+        res = cv2.matchTemplate(pictoZone, tmpl_img, cv2.TM_CCOEFF_NORMED)
+        threshold = 0.5
+        loc = np.where(res >= threshold)
         for pt in zip(*loc[::-1]):
-            cv2.rectangle(img, pt, (pt[0] + w, pt[1] + h), (0,0,255), 2)
-
-        if len(zip(*loc[::-1])) == 2:
-            return img
-    return img
-
-
+            pattern = template
+            break
+        if pattern != "-":
+            break
+    return pattern
 
 
-templates = ['flag', 'bomb', 'warning', 'flash', 'danger', 'car', 'fire']
-points = []
-shapes = []
+def pictogramZones(coords):
+    x = min(set(map((lambda (x, _): x), coords)))
+    ys = []
+    for y in list(map((lambda (_, y): y), coords)):
+        if len(filter(lambda y1: (float(y1) / float(y)) > 0.9 and (float(y) / float(y1)) < 1.1, ys)) == 0:
+            ys.append(y)
+    return [(x,y) for y in ys]
 
-img = cv2.imread('test7.png',0)
-w, h = img.shape[::-1]
-ratio = float(min(w,1448))/float(max(w,1448))
-print ratio
-img = cv2.resize(img, (int(round(ratio * w)), int(round(ratio * h))))
-ret,gray = cv2.threshold(img,210,255,cv2.THRESH_TOZERO)
-cv2.imshow('img',gray)
 
-ret,thresh = cv2.threshold(gray,0,255,1)
-_,contours,h = cv2.findContours(thresh,1,2)
+########################################################
+#                                                      #
+#                      DETECTION                       #
+#                                                      #
+########################################################
 
-i = 0
-for cnt in contours:
-    approx = cv2.approxPolyDP(cnt,0.01*cv2.arcLength(cnt,True),True)
-    if len(approx)==4:
-        y1 = approx[0][0][1]+2
-        x1 = approx[0][0][0]+2
-        y2 = approx[2][0][1]-2
-        x2 = approx[2][0][0]-2
-        if math.sqrt((x1-x2) ** 2 + (y1-y2) ** 2) > float(60)*ratio:
-            special_squares = filter(lambda (x,y): (float(x1)/float(x)) > 0.9 and (float(y1)/float(y)) > 0.9 and (float(y1)/float(y)) < 1.1 and (float(x1)/float(x)) < 1.1, points)
-            if len(special_squares) == 0:
-                i+= 1
-                points.append((x1,y1))
-                cv2.imshow('img',gray)
-                cv2.circle(gray,(x1,y1), 3, (0,0,255), 1)
-                cv2.circle(gray,(x2,y2), 3, (0,0,255), 1)
-                points.append((x1,y1))
-                roi = img[y1:y2, x1:x2]
-                shapes.append(roi)
-                cv2.waitKey(0)
-                cv2.imshow('roi',roi)
-                if i % 5 == 0:
-                    #cv2.circle(gray,(x1-int(float(220)*ratio),y1), 3, (0,0,255), 1)
-                    #cv2.circle(gray,(x2-int(float(220)*ratio),y2), 3, (0,0,255), 1)
-                    roi = img[y1:y2, 1:x1-4]
-                    cv2.imshow('roi2',roi)
-                    pattern = "-"
-                    for template in templates:
-                        tmpl_img = cv2.imread(template + '.png',0)
-                        w, h = tmpl_img.shape[::-1]
-                        tmpl_img = cv2.resize(tmpl_img, (int(round(ratio * w)), int(round(ratio * h))))
-                        res = cv2.matchTemplate(roi,tmpl_img,cv2.TM_CCOEFF_NORMED)
-                        threshold = 0.5
-                        loc = np.where( res >= threshold)
-                        for pt in zip(*loc[::-1]):
-                            pattern = template
-                            break
+def classifyShapes(img, shapes, ratio):
+    pictos = {}
+    result = []
+    heights = list(map((lambda (shape, _): shape.shape[::-1][1]), shapes))
+    coords = list(map((lambda (_, coord): coord), shapes))
+    height_avg = 0
+    if len(heights) > 0:
+        height_avg = int(np.mean(heights))
+    else:
+        return pictos
+    zones = pictogramZones(coords)
+    for (x,y) in zones:
+        pictoZone = img[y:y+height_avg,1:x]
+        result.append((recognizePictogram(pictoZone, ratio), y))
+    for (name, y) in result:
+        pictograms = list(map(lambda (shape, _): shape, list(filter(lambda (shape, (_, y1)): (float(y1) / float(y)) > 0.9 and (float(y1) / float(y)) < 1.1 , shapes))))
+        if name not in pictos.keys():
+            pictos[name] = pictograms
+        else:
+            pictos[name].extend(pictograms)
+    return pictos
 
-                        if pattern != "-":
-                            break
 
-                    index = 0
-                    for shape in shapes:
-                        filename = "/Users/fthomasmorel/Desktop/IRF/" + pattern + "_" + str(i) + "_" + str(index) + ".png"
-                        cv2.imwrite(filename, shape)
-                        print filename
-                        index+=1
+def processFile(file, threashold = 0.63):
+    img = cv2.imread(file, 0)
+    empty_img = emptyImage(img)
+    width, height = empty_img.shape[::-1]
+    ratio = float(min(width, WIDTH_BASE_SIZE)) / float(max(width, WIDTH_BASE_SIZE))
+    shapes = detectShapes(empty_img, img, ratio, threashold)
+    shapes = classifyShapes(img, shapes, ratio)
+    errors = 0
+    extracted = 0
+    if "-" in shapes.keys():
+        errors = len(shapes["-"])
+    for key in shapes.keys():
+        extracted += len(shapes[key])
+    missing = NB_PICTOS - (extracted + errors)
+    return shapes, extracted, errors, missing
 
-                    shapes = []
-                    cv2.waitKey(0)
 
-cv2.destroyAllWindows()
+########################################################
+#                                                      #
+#                     EXPORTATION                      #
+#                                                      #
+########################################################
+
+def writeImage(name, img, index):
+    for dirname, _, _ in os.walk(OUTPUT_DIR):
+        w, h = img.shape[::-1]
+        img = img[20:h-20,20:w-20]
+        cv2.imwrite(dirname + name + "_" + str(index) + ".png", img)
+        _, img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)
+        cv2.imwrite(dirname + name + "_" + str(index) + "_dark.png", img)
+        break
+
+
+def exportImages(shapes, extracted):
+    i = 0
+    for shape_dict in shapes:
+        for key in shape_dict.keys():
+            if key == "-": next
+            for img in shape_dict[key]:
+                drawProgressBar(float(i)/float(extracted), 0)
+                writeImage(key, img, i)
+                i += 1
+
+
+def drawProgressBar(percent, errorRate, barLen = 50):
+    sys.stdout.write("\r")
+    progress = ""
+    for i in range(barLen):
+        if i < int(barLen * percent):
+            progress += "="
+        else:
+            progress += " "
+    sys.stdout.write("[%s] %.2f%%, errors => %.2f%%" % (progress, percent * 100, errorRate))
+    sys.stdout.flush()
+
+
+########################################################
+#                                                      #
+#                        MAIN                          #
+#                                                      #
+########################################################
+
+for dirname, _, filenames in os.walk(BANK_IMG_FOLDER):
+    print "Analyzing " + str(len(filenames)) + " Images..."
+    shapes = []
+    done = 1
+    errors = 0
+    missings = 0
+    progress = 0
+    extracteds = 0
+    messages = []
+    for filename in filenames:
+        drawProgressBar(float(progress)/float(len(filenames)), ((float(errors) + float(missings)) / float(done)) * 100)
+        imgPath = os.path.join(dirname, filename)
+        result, extracted, error, missing = processFile(imgPath)
+
+        progress+= 1
+        if extracted > NB_PICTOS:
+            result, extracted, error, missing = processFile(imgPath, 0.65)
+
+        if extracted > NB_PICTOS:
+            messages.append("Unable to process [ " + filename +" ] : Found only " + str(extracted) + " images instead of " + str(NB_PICTOS))
+            errors+= NB_PICTOS
+        if extracted < NB_PICTOS and extracted > 15:
+            messages.append("Unable to process [ " + filename +" ] : Found only " + str(extracted) + " images instead of " + str(NB_PICTOS))
+            messages.append("Unable to process [ " + filename +" ] : Misdetected " + str(error) + " images out of " + str(extracted))
+            errors += error
+            missings += missing
+        if extracted > 15:
+            extracteds += extracted
+            done += NB_PICTOS
+            shapes.append(result)
+
+        if progress > 5: break
+
+    if done > 0 :
+        drawProgressBar(1, ((float(errors) + float(missings)) / float(done)) * 100)
+        print "\n"
+        print "Exporting " + str(extracteds) + " Images..."
+        exportImages(shapes, extracteds)
+        drawProgressBar(1, 0)
+        print "\n"
+        print done, " pictograms treated"
+        print errors, " pictograms misrecognized"
+        print missings, " pictograms missing"
+        print extracteds, " pictograms exported"
+        print "Error rate: ", ((float(errors) + float(missings)) / float(done)) * 100, "%"
+    else:
+        print "[error] Unable to analyze the database"
