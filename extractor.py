@@ -1,5 +1,5 @@
 #
-#  square_test.py
+#  extractor.py
 #  ImageExtracter
 #
 #  Created by Florent THOMAS-MOREL on 10/26/16.
@@ -227,7 +227,7 @@ for dirname, _, filenames in os.walk(BANK_IMG_FOLDER):
             done += NB_PICTOS
             shapes.append(result)
 
-        if progress > 5: break
+        #if progress > 5: break
 
     if done > 0 :
         drawProgressBar(1, ((float(errors) + float(missings)) / float(done)) * 100)
