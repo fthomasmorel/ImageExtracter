@@ -87,3 +87,13 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+ Generator/training/
+ Generator/test/
+
+ ImageExtracter/bank
+ ImageExtracter/images
+ ImageExtracter/output
+ ImageExtracter/output2
+
+ Visualizer/images
