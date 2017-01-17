@@ -91,9 +91,15 @@ ENV/
  Generator/training/
  Generator/test/
 
- ImageExtracter/bank
- ImageExtracter/images
- ImageExtracter/output
- ImageExtracter/output2
+ /ImageExtracter/bank
+ /ImageExtracter/images
+ /ImageExtracter/output
+ /ImageExtracter/output2
 
- Visualizer/images
+ /Visualizer/images/
+ Generator/test/
+./Generator/training/
+./ImageExtracter/bank/
+./ImageExtracter/output/
+./ImageExtracter/output2/
+./Visualizer/images/
